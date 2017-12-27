@@ -1,0 +1,99 @@
+## Set working directory, read data and load necessary packages
+
+setwd("C:/Users/rbyrnes/Dropbox/UC Rangelands Lab/Soil x Grazing Meta/Database")
+meta_test <- read.csv("Database_20170619.csv")
+library(metafor)
+library(glmulti)
+
+#soil depth  as categorical variables and transform latitude to absolute values
+meta_test$soil.dept <- as.factor(meta_test$soil.dept)
+
+#meta_test$study.id <- as.factor(meta_test$study.id)
+meta_test$ablat <- abs(meta_test$lat)
+
+
+# Subset continuous grazing treatment and no grazing control, store in meta.cn
+meta.cn <- meta_test[which(meta_test$graz.exp.strat == 'cont' 
+                           & meta_test$graz.control.strat == 'none'),]
+# Calculate lnRR of SOC between continuous grazing and no grazing
+es.SOC.cn <- escalc(m1 = meanSOC.exp.gkg, m2 = meanSOC.control.gkg,
+                    sd1 = sdSOC.exp.gkg, sd2 = sdSOC.control.gkg,
+                    n1 = reps.exp, n2 = reps.control,measure = "ROM",
+                    data = meta.cn)
+
+#es.SOC.cn <- droplevels(es.SOC.cn[-which(es.SOC.cn$graz.exp.rate == ""), ] )
+rma.SOC.cn <- rma(yi ~ aridity.index + clay, vi, data = es.SOC.cn, method = "REML")
+
+plot(rma.SOC.cn)
+
+
+## Fit model using glmulti: http://www.metafor-project.org/doku.php/tips:model_selection_with_glmulti?s[]=aic and
+## defined function rma.glmulti using maximum likelihood estimation
+
+# adaptated glmulti function to use maximum likelihood estimation
+rma.glmulti <- function(formula, data, ...) {
+  rma(formula, vi, data=data, method="ML", ...)
+}
+
+# glmulti applied to lnRR of continuous and no grazing on SOC
+res.SOC <- glmulti(yi ~ graz.exp.rate + plant.life + study.yrs + elevation + soil.dept + sand + clay + aridity.index + abs(lat), 
+               data=es.SOC.cn,
+               level=1, 
+               fitfunction=rma.glmulti, 
+               crit="aicc")
+
+#weights table stored in tmp.SOC
+tmp.SOC <- weightable(res.SOC)
+
+# model with minimum AICc and all models within two IC's stored here
+tmp.SOC <- tmp.SOC[tmp.SOC$aicc <= min(tmp.SOC$aicc) + 2,]
+tmp.SOC
+
+#Modeled average importance of terms plot
+plot(res.SOC, type="s")
+
+
+# POtential method to evaluate multi-model inference
+#setOldClass("rma.uni")
+#setMethod('getfit', 'rma.uni', function(object, ...) {
+#  if (object$test=="z") {
+#    cbind(estimate=coef(object), se=sqrt(diag(vcov(object))), df=100000)
+#  } else {
+#    cbind(estimate=coef(object), se=sqrt(diag(vcov(object))), df=object$k-object$p)
+#  }
+# })
+
+
+## Bulk density
+
+es.BD.cn <- escalc(m1 = meanBD.exp, m2 = meanBD.control,
+                   sd1 = sdBD.exp, sd2 = sdBD.control,
+                   n1 = reps.exp, n2 = reps.control,
+                   measure = "ROM",
+                   data = meta.cn)
+
+
+res.BD <- glmulti(yi ~ graz.exp.rate + plant.life + study.yrs + elevation + soil.dept + sand + clay + aridity.index + ablat, 
+                   data=es.BD.cn,
+                   level=1, 
+                   fitfunction=rma.glmulti, 
+                   crit="aicc")
+
+tmp.BD <- weightable(res.BD)
+tmp.BD <- tmp.BD[tmp.BD$aicc <= min(tmp.BD$aicc) + 2,]
+tmp.BD
+
+plot(res.BD, type="s")
+
+# POtential method to evaluate multi-model inference
+#setOldClass("rma.uni")
+#setMethod('getfit', 'rma.uni', function(object, ...) {
+#  if (object$test=="z") {
+#    cbind(estimate=coef(object), se=sqrt(diag(vcov(object))), df=100000)
+#  } else {
+#    cbind(estimate=coef(object), se=sqrt(diag(vcov(object))), df=object$k-object$p)
+#  }
+# })
+
+
+## CN
